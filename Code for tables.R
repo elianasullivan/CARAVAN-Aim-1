@@ -72,18 +72,29 @@ for (i in vec) {
 table_one <- matrix(percents, ncol = 3, byrow =TRUE)
 rownames(table_one) <- c(sprintf("Micropolitan (n=%s)",rurality_num[1]), sprintf("Rural (n=%s)",rurality_num[2]), 
                          sprintf("Urban (n=%s)",rurality_num[3]), sprintf("Total (n=%s)",rurality_num[4]))
-colnames(table_one) <- c("None", "Non-VA Only", "Both")
+colnames(table_one) <- c("None", "VA and Non-VA", "VA Only")
+
 
 #creates a data frame from the table
 df_one <- as.data.frame.matrix(table_one)
 
+#switch the order
+#if we stop here, we have the %s that include the number that can only access non-va
+df_one <- df_one[,c("VA Only", "VA and Non-VA", "None")]
+
+#now making a column re how many people can access once access is expanded
+expanded_access <- df_one$`VA Only`+df_one$`VA and Non-VA`
+df_one[2] <- expanded_access
+
 #formats the table with percents and nicer formatting
-formattable(df_one, list('None'=percent, 'Non-VA Only'=percent, 'Both'= percent), align = rep("c",NCOL(df_one)))
+formattable(df_one, list('None'=percent, 'VA and Non-VA'=percent, 'VA Only'= percent), align = rep("c",NCOL(df_one)))
 
 
 
 
 
+
+percents
 ##### GRAVEYARD #####
 
 
