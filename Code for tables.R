@@ -1,13 +1,17 @@
 library(dplyr)
 library(formattable)
 
-### import data ####
+##### General Notes #####
+# naming convention could use some work but oh well
+
+
+##### Import Data ####
 primary_care <- read.csv("/Users/elianasullivan/Box/Eli's WFH stuff/CARAVAN/data/for code/drive time_PC.csv")
 VA <- read.csv("/Users/elianasullivan/Box/Eli's WFH stuff/CARAVAN/data/for code/drive time_VA.csv")
 ruca <- read.csv("/Users/elianasullivan/Box/Eli's WFH stuff/CARAVAN/data/for code/ruca codes.csv")
 all <- read.csv("/Users/elianasullivan/Box/Eli's WFH stuff/CARAVAN/data/for code/VA data by census tract.csv")
 
-#### cleaning ####
+##### Cleaning and Formatting ####
 names(all)[2] <- "FIPS"
 
 #add columns from RUCA (just primary and secondary codes)
@@ -21,38 +25,37 @@ all$access[all$FIPS %in% VA$GEOID] <- "VA Access"
 #assign rurality designations
 all$rurality <- ifelse(all$Primary.RUCA.Code < 4, "Urban", ifelse(all$Primary.RUCA.Code < 7, "Micropolitan", "Rural"))
 
+
+##### Making Access Table ####
+
+# FIND THE TOTAL NUMBER OF VETS, BY RURALITY AND TOTAL
 #this is vets by rurality total (used to find percentages w the above)
 vets_rurality <- all %>%
   group_by(rurality) %>%
   summarize(vets = sum(Total.Veterans.18.Years.and.Over))
-
 #make the totals into a vector
 rurality_num <- pull(vets_rurality, vets)
 #add a number for total
 rurality_num <- c(rurality_num,sum(rurality_num))
 
 
-#calculate the number of vets per category
+# FIND THE NUMBER OF VETS BY ACCESS AND RURALITY AND TOTAL
+#calculate the number of vets per access category
 vet_nums <- all %>%
   group_by(rurality,access) %>%
   summarize(vets = sum(Total.Veterans.18.Years.and.Over))
-
 #calculate the number of vets total
 vets_access <- all %>%
   group_by(access) %>%
   summarize(vets = sum(Total.Veterans.18.Years.and.Over))
-
-
 #makes the stratified vets column into a vector
 access_rurality <- pull(vet_nums, vets)
-
 #makes the all vets into a vector
 vets_access <- pull(vets_access, vets)
-
 #combo
 vec <- c(access_rurality, vets_access)
 
-#calculate the percentages
+#calculates the percent of vets in each category, uses totals
 percents <- c()
 count <- 1
 index <- 1
@@ -65,18 +68,18 @@ for (i in vec) {
   count <- count + 1
 }
 
-
 #makes the two way table
-
-
 table_one <- matrix(percents, ncol = 3, byrow =TRUE)
 rownames(table_one) <- c(sprintf("Micropolitan (n=%s)",rurality_num[1]), sprintf("Rural (n=%s)",rurality_num[2]), 
                          sprintf("Urban (n=%s)",rurality_num[3]), sprintf("Total (n=%s)",rurality_num[4]))
 colnames(table_one) <- c("None", "Non-VA Only", "Both")
 
+#creates a data frame from the table
 df_one <- as.data.frame.matrix(table_one)
 
+#formats the table with percents and nicer formatting
 formattable(df_one, list('None'=percent, 'Non-VA Only'=percent, 'Both'= percent), align = rep("c",NCOL(df_one)))
+
 
 
 
@@ -132,3 +135,7 @@ formattable::percent(c(df_one[1:3,1],df_one[1:3,2],df_one[1:3,3]))
 
 
 
+
+
+names(all)
+ 
