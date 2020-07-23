@@ -1,8 +1,15 @@
 library(dplyr)
 library(formattable)
+library(ggplot2)
 
-##### General Notes #####
-# naming convention could use some work but oh well
+
+install.packages("devtools")
+
+install.packages("easyGgplot2")
+library(devtools)
+install_github("kassambara/easyGgplot2")
+library(easyGgplot2)
+
 
 
 ##### Import Data ####
@@ -11,6 +18,11 @@ VA <- read.csv("/Users/elianasullivan/Box/Eli's WFH stuff/CARAVAN/data/for code/
 ruca <- read.csv("/Users/elianasullivan/Box/Eli's WFH stuff/CARAVAN/data/for code/ruca codes.csv")
 all <- read.csv("/Users/elianasullivan/Box/Eli's WFH stuff/CARAVAN/data/for code/VA data by census tract.csv")
 
+pc_scores <- read.csv("/Users/elianasullivan/Box/Eli's WFH stuff/CARAVAN/data/for code/pc_2sfca.csv")
+va_scores <- read.csv("/Users/elianasullivan/Box/Eli's WFH stuff/CARAVAN/data/for code/va_2sfca.csv")
+
+combo_scores <- rbind(pc_scores, va_scores)
+
 ##### Cleaning and Formatting ####
 names(all)[2] <- "FIPS"
 
@@ -18,7 +30,7 @@ names(all)[2] <- "FIPS"
 all <- merge(x = all, y = ruca[ , c("FIPS.Code","Primary.RUCA.Code","Secondary.RUCA.Code")], by.x ="FIPS", by.y = "FIPS.Code")
 
 #add columns for access
-all$access <- "No Access"
+all$access <- "No Spatial Access to Primary Care"
 all$access[all$FIPS %in% primary_care$GEOID] <- "Non-VA Access"
 all$access[all$FIPS %in% VA$GEOID] <- "VA Access"
 
@@ -72,29 +84,154 @@ for (i in vec) {
 table_one <- matrix(percents, ncol = 3, byrow =TRUE)
 rownames(table_one) <- c(sprintf("Micropolitan (n=%s)",rurality_num[1]), sprintf("Rural (n=%s)",rurality_num[2]), 
                          sprintf("Urban (n=%s)",rurality_num[3]), sprintf("Total (n=%s)",rurality_num[4]))
-colnames(table_one) <- c("None", "VA and Non-VA", "VA Only")
+colnames(table_one) <- c("No Spatial Access to Primary Care", "Spatial Access to non-VA and/or VA Primary Care", "Spatial Access to VA Primary Care")
 
 
 #creates a data frame from the table
 df_one <- as.data.frame.matrix(table_one)
 
-#switch the order
+#switch the order of rows and columns
+df_one <- df_one[,c("Spatial Access to VA Primary Care", "Spatial Access to non-VA and/or VA Primary Care", "No Spatial Access to Primary Care")]
+df_one <- df_one[c(3,1,2,4),]
+
 #if we stop here, we have the %s that include the number that can only access non-va
-df_one <- df_one[,c("VA Only", "VA and Non-VA", "None")]
 
 #now making a column re how many people can access once access is expanded
-expanded_access <- df_one$`VA Only`+df_one$`VA and Non-VA`
+expanded_access <- df_one$`Spatial Access to VA Primary Care`+df_one$`Spatial Access to non-VA and/or VA Primary Care`
 df_one[2] <- expanded_access
 
 #formats the table with percents and nicer formatting
-formattable(df_one, list('None'=percent, 'VA and Non-VA'=percent, 'VA Only'= percent), align = rep("c",NCOL(df_one)))
+formattable(df_one, list('No Spatial Access to Primary Care'=percent, 'Spatial Access to non-VA and/or VA Primary Care'=percent, 'Spatial Access to VA Primary Care'= percent), align = rep("c",NCOL(df_one)))
+
+
+
+### CENSUS TRACT RURALITY DESIGNATION CALCULATIONS ####
+
+ruca_table <- table(ruca$Primary.RUCA.Code)
+ruca_df <- data.frame(ruca_table)
+
+urban <- sum(ruca_df[,2][1:3])
+micro <- sum(ruca_df[,2][4:5]) #strangely there are no 6s so index gets bumped
+rural <- sum(ruca_df[,2][6:9])
+total <- urban + micro + rural + 4
+
+c(urban,micro,rural)
+#this is the percent of OR census tracts that are urban, micro, rural
+percent(c(urban,micro,rural)/total)
+
+
+## number of veterans in different rualities ##
+urban_vets <- 199329
+rural_vets <- 30588
+micro_vets <- 58623
+total_vets <- urban_vets+rural_vets+micro_vets
+
+percent(c(urban_vets,micro_vets,rural_vets)/total_vets)
+total_vets
+
+
+#### TOTAL NUMBER OF NON-VETS BY RURALITY AND TOTAL ####
+#this is vets by rurality total (used to find percentages w the above)
+nonvets_rurality <- all %>%
+  group_by(rurality) %>%
+  summarize(nonvets = sum(Total.Nonveterans.18.Years.and.Over))
+#make the totals into a vector
+rurality_non_num <- pull(nonvets_rurality, nonvets)
+#add a number for total
+rurality_non_num <- c(rurality_non_num,sum(rurality_non_num))
+
+#mirco, rural, urban
+# percent of nonvets over 18 in each area
+percent(rurality_non_num[1:3]/rurality_non_num[4])
 
 
 
 
+####### 2SFCA analysis #######
+
+#stratify by rurality
+## VA only
+va_score_summary <- va_scores %>%
+  group_by(URF) %>%
+  summarize(mean(ProToPop), median(ProToPop))
+va_score_summary
 
 
-percents
+## VA and non-VA
+pc_score_summary <- pc_scores %>%
+  group_by(URF) %>%
+  summarize(mean(ProToPop), median(ProToPop))
+pc_score_summary
+
+
+## ANOVA ## 
+
+#one-way primary care
+one_way_pc <- aov(ProToPop ~ URF, data = pc_scores)
+summary(one_way_pc)
+TukeyHSD(one_way_pc)
+
+#one-way VA
+one_way_va <- aov(ProToPop ~ URF, data = va_scores)
+summary(one_way_va)
+TukeyHSD(one_way_va)
+
+one_way_va$model
+
+#two way with URF and pc/va
+two_way <- aov(ProToPop ~ URF + which, data = combo_scores)
+summary(two_way)
+TukeyHSD(two_way)
+
+#t-test for pc vs vA 
+t.test(pc_scores$ProToPop, va_scores$ProToPop)
+
+#just summary
+summary(pc_scores)
+summary(va_scores)
+
+
+
+## counting zeros ## 
+
+# totals
+total_urban <- sum(va_scores$URF == 'Urban')
+total_rural <- sum(va_scores$URF == 'Rural')
+
+#VA only
+percent(sum(va_scores$URF == 'Urban' & va_scores$ProToPop == 0)/total_urban)
+percent(sum(va_scores$URF == 'Rural' & va_scores$ProToPop == 0)/total_rural)
+
+#all pc
+percent(sum(pc_scores$URF == 'Urban' & pc_scores$ProToPop == 0)/total_urban)
+percent(sum(pc_scores$URF == 'Rural' & pc_scores$ProToPop == 0)/total_rural)
+
+#### DISTRIBUTIONS ####
+# holding on this for now but can show, maybe erin #
+
+ggplot2.histogram(data=pc_scores, xName='ProToPop',
+                  groupName='URF', legendPosition="top")
+
+## all primary care
+ggplot2.histogram(data=pc_scores, xName='ProToPop',
+                  groupName='URF', legendPosition="top",
+                  alpha=0.5, addDensity=TRUE)
+
+#va only
+ggplot2.histogram(data=va_scores, xName='ProToPop',
+                  groupName='URF', legendPosition="top",
+                  alpha=0.5, addDensity=TRUE)
+
+#here's all three next to each other
+ggplot(pc_scores,aes(x=ProToPop))+geom_histogram()+facet_grid(~URF)+theme_bw()
+
+
+
+#one more thing, just the distributions and not historgrams
+ggplot(pc_scores, aes(x=ProToPop, color=URF)) +
+  geom_density()
+
+
 ##### GRAVEYARD #####
 
 
@@ -102,7 +239,7 @@ percents
 table_two <- matrix(vec, ncol = 3, byrow =TRUE)
 rownames(table_one) <- c(sprintf("Micropolitan (n=%s)",rurality_num[1]), sprintf("Rural (n=%s)",rurality_num[2]), 
                          sprintf("Urban (n=%s)",rurality_num[3]), sprintf("Total (n=%s)",rurality_num[4]))
-colnames(table_one) <- c("None", "Non-VA Only", "Both")
+colnames(table_one) <- c("No Spatial Access to Primary Care", "Non-VA Only", "Both")
 table_two
 
 #assign VA, all-pc or none
@@ -143,10 +280,4 @@ new_df <- data.frame(
 
 formattable::percent(c(df_one[1:3,1],df_one[1:3,2],df_one[1:3,3]))
 
-
-
-
-
-
-names(all)
  
